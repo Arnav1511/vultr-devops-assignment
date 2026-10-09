@@ -12,7 +12,7 @@ WORKDIR /src
 
 # Copy go.mod first so the dependency layer stays cached until dependencies
 # change, rather than being rebuilt on every source edit.
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 

@@ -21,3 +21,6 @@ CLAUDE.md
 
 # Saved plans can contain secrets
 tfplan
+
+# Vault unseal key and root token
+.vault-init.json

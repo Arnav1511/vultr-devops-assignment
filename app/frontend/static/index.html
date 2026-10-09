@@ -17,34 +17,88 @@
   <table id="details"></table>
   <button id="refresh">Refresh</button>
 
+  <h2>Messages</h2>
+  <form id="form">
+    <input id="text" maxlength="280" required placeholder="Write a message" size="40">
+    <button>Send</button>
+  </form>
+  <p id="error" class="err"></p>
+  <ul id="messages"></ul>
+
   <script>
-    // Relative URL: same origin as this page. The Gateway routes /api to the backend.
-    async function load() {
-      const state = document.getElementById('state');
-      const table = document.getElementById('details');
+    // Relative URLs: same origin as this page. The Gateway routes /api to the
+    // backend. All values are inserted with textContent, never innerHTML, so
+    // a stored message cannot inject markup or script into the page.
+    const $ = (id) => document.getElementById(id);
+
+    function row(key, value) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      const td = document.createElement('td');
+      th.textContent = key;
+      td.textContent = value;
+      tr.append(th, td);
+      return tr;
+    }
+
+    async function loadStatus() {
       try {
         const res = await fetch('/api/status');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        state.textContent = 'reachable';
-        state.className = 'ok';
-        table.replaceChildren(...Object.entries(data).map(([k, v]) => {
-          const row = document.createElement('tr');
-          const key = document.createElement('th');
-          const val = document.createElement('td');
-          key.textContent = k;
-          val.textContent = v;
-          row.append(key, val);
-          return row;
-        }));
+        $('state').textContent = 'reachable';
+        $('state').className = 'ok';
+        const rows = [];
+        for (const [k, v] of Object.entries(data)) {
+          if (v !== null && typeof v === 'object') {
+            for (const [k2, v2] of Object.entries(v)) rows.push(row(k + '.' + k2, v2));
+          } else {
+            rows.push(row(k, v));
+          }
+        }
+        $('details').replaceChildren(...rows);
       } catch (e) {
-        state.textContent = 'unreachable (' + e.message + ')';
-        state.className = 'err';
-        table.replaceChildren();
+        $('state').textContent = 'unreachable (' + e.message + ')';
+        $('state').className = 'err';
+        $('details').replaceChildren();
       }
     }
-    document.getElementById('refresh').addEventListener('click', load);
-    load();
+
+    async function loadMessages() {
+      try {
+        const res = await fetch('/api/messages');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const items = (await res.json()).map((m) => {
+          const li = document.createElement('li');
+          li.textContent = new Date(m.created_at).toLocaleString() + ' — ' + m.text;
+          return li;
+        });
+        $('messages').replaceChildren(...items);
+      } catch (e) {
+        $('error').textContent = 'Could not load messages (' + e.message + ')';
+      }
+    }
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      $('error').textContent = '';
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: $('text').value}),
+      });
+      if (!res.ok) {
+        $('error').textContent = 'Could not save message (HTTP ' + res.status + ')';
+        return;
+      }
+      $('text').value = '';
+      loadMessages();
+      loadStatus();
+    });
+
+    $('refresh').addEventListener('click', () => { loadStatus(); loadMessages(); });
+    loadStatus();
+    loadMessages();
   </script>
 </body>
 </html>

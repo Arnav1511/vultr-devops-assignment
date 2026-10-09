@@ -5,13 +5,14 @@ metadata:
   labels:
     app: backend
 spec:
-  replicas: 2
+  # No "replicas" field on purpose: the HPA below owns the replica count. If it
+  # were set here, every apply would reset the count and fight the autoscaler.
   selector:
     matchLabels:
       app: backend
   strategy:
     rollingUpdate:
-      # Never drop below the desired replica count during a rollout: start a
+      # Never drop below the current replica count during a rollout: start a
       # new pod first, and only remove an old one once the new one is Ready.
       maxUnavailable: 0
       maxSurge: 1
@@ -19,11 +20,25 @@ spec:
     metadata:
       labels:
         app: backend
+        owner: platform
     spec:
       imagePullSecrets:
         - name: vultr-registry
       # The app never calls the Kubernetes API, so do not hand it a token.
       automountServiceAccountToken: false
+      affinity:
+        podAntiAffinity:
+          # Spread replicas across nodes so one node failure cannot take out
+          # the whole service. "Preferred", not "required": a hard rule would
+          # leave pods Pending whenever the HPA wants more replicas than there
+          # are nodes, and would block rolling updates on a full cluster.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: backend
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -37,6 +52,27 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          env:
+            # Passwords come from the Vault-synced Secret; the URLs are built
+            # from them with Kubernetes $(VAR) expansion, so the full
+            # connection strings never exist in git or in a ConfigMap.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: db-credentials, key: postgres-password}
+            - name: MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: db-credentials, key: mongodb-password}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: db-credentials, key: valkey-password}
+            # sslmode=disable: the databases do not terminate TLS themselves;
+            # ztunnel encrypts the connection with mTLS between the two pods.
+            - name: DATABASE_URL
+              value: postgres://app:$(POSTGRES_PASSWORD)@postgres.databases.svc.cluster.local:5432/app?sslmode=disable
+            - name: MONGODB_URI
+              value: mongodb://root:$(MONGODB_PASSWORD)@mongodb.databases.svc.cluster.local:27017/?authSource=admin
+            - name: VALKEY_ADDR
+              value: valkey.databases.svc.cluster.local:6379
           securityContext:
             allowPrivilegeEscalation: false
             # The binary writes nothing to disk, so no emptyDir is needed.
@@ -44,14 +80,13 @@ spec:
             capabilities:
               drop: ["ALL"]
           resources:
-            # Requests are what the scheduler reserves and what HPA CPU
-            # percentages are measured against. No CPU limit: a CPU limit
-            # throttles even when the node is idle; memory is limited because
-            # memory cannot be throttled, only OOM-killed.
+            # Requests are what the scheduler reserves and what the HPA's CPU
+            # percentage is measured against.
             requests:
-              cpu: 50m
-              memory: 32Mi
+              cpu: 100m
+              memory: 64Mi
             limits:
+              cpu: 500m
               memory: 128Mi
           # startup: gates the other two until the app has booted, so a slow
           #          start is not mistaken for a hang. Up to 30 x 2s = 60s.
@@ -68,6 +103,7 @@ spec:
           readinessProbe:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 5
+            timeoutSeconds: 3
             failureThreshold: 2
 ---
 apiVersion: v1
@@ -83,3 +119,61 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  # Two is the minimum for availability: one pod can be drained or crash while
+  # the other keeps serving.
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    # Scale out when average CPU use across pods exceeds 70% of the request
+    # (70m of 100m). 70% leaves headroom for the ~30s it takes a new pod to
+    # become Ready; a higher target would saturate before help arrives.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    # Scale up immediately but wait 5 minutes of sustained low load before
+    # scaling down, so a brief lull does not cause replica flapping.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+spec:
+  # During voluntary disruptions (node drain, upgrade) at most one pod may be
+  # down at a time. Expressed as maxUnavailable rather than minAvailable so it
+  # stays correct at any replica count the HPA chooses.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: backend
+---
+# Tells the Prometheus Operator to scrape the backend's /metrics endpoint.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

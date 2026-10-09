@@ -1,3 +1,5 @@
+# Named "app" here; each overlay renames it (app-dev, app-staging, app-prod)
+# through its `namespace:` setting.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,5 +9,3 @@ metadata:
     # redirects their traffic through the node's ztunnel, which gives them mTLS
     # with no sidecar and no pod restart.
     istio.io/dataplane-mode: ambient
-    # Allows HTTPRoutes in this namespace to attach to the public Gateway.
-    gateway-access: "true"

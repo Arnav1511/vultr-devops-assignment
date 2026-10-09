@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Renames the base's "app" namespace and places every resource in it.
+namespace: app-prod
+resources:
+  - ../../base
+  - httproute.yaml
+# The image tag is the git SHA the image was built from, never :latest. The
+# deploy workflow rewrites these two lines; reverting that commit is a rollback.
+images:
+  - name: blr.vultrcr.com/vultrdevopsprod/backend
+    newTag: "add4ad8"
+  - name: blr.vultrcr.com/vultrdevopsprod/frontend
+    newTag: "add4ad8"
+# Full scaling range.
+patches:
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/maxReplicas
+        value: 6
+  - target:
+      kind: Namespace
+    patch: |-
+      - op: add
+        path: /metadata/labels/gateway-access
+        value: "true"
