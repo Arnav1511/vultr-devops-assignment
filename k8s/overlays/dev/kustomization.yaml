@@ -8,9 +8,9 @@ resources:
 # deploy workflow rewrites these two lines; reverting that commit is a rollback.
 images:
   - name: blr.vultrcr.com/vultrdevopsprod/backend
-    newTag: "deadbee"
+    newTag: "7167662"
   - name: blr.vultrcr.com/vultrdevopsprod/frontend
-    newTag: "deadbee"
+    newTag: "7167662"
 # Smallest footprint: one replica is enough to exercise a change.
 patches:
   - target:
