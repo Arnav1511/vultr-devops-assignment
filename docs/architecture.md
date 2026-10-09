@@ -241,7 +241,8 @@ flowchart LR
    so a CVE published after a build is still flagged (repository → Security).
 
 **Deploy** (after a successful build on `main`, or manually with any tag):
-for dev, then staging, then prod —
+for dev, then staging, then — after a person approves the run in GitHub —
+prod. Each stage:
 
 1. Commit the new image tag to `k8s/overlays/<env>/kustomization.yaml`.
 2. Argo CD renders the Kustomize overlay and applies it.
@@ -254,6 +255,13 @@ for dev, then staging, then prod —
 
 **Why rollback is a `git revert`.** With self-heal on, Argo CD reverts any
 change not in git — including `kubectl rollout undo` — within seconds.
+
+**Gates.** `main` cannot be pushed to directly: a pull request with passing
+lint, tests, builds and scans is required. Production cannot be deployed
+without a person approving the run. Pull requests from forks need approval
+before any workflow runs, and never receive secrets. Findings are also sent
+to GitHub code scanning; secret scanning with push protection and Dependabot
+alerts are enabled.
 
 **Pipeline security.** Registry credentials and the kubeconfig are GitHub
 Actions secrets. The kubeconfig belongs to a service account that can only
@@ -270,6 +278,7 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
 | "Deploy using Helm" for databases | A small local chart (`bootstrap/databases/chart`), one release per database. Community charts depend on images that are no longer freely maintained, and operators add admission webhooks that conflict with STRICT mTLS |
 | "Every deployment must include HPA, PDB…" | Applied to the application Deployments. Databases are single-instance StatefulSets with the same security context |
 | dev / staging / prod | Three namespaces in one cluster, sharing the database instances. Only prod is public. This demonstrates configuration layering, not environment isolation |
+| Repository visibility | Public, so that GitHub's free branch rules, environment approvals and code scanning apply. The full history and all pipeline logs were scanned for secrets before the switch |
 | "Kustomize-based deployment" + "automated rollback" | Argo CD renders and applies the Kustomize overlays; the workflow verifies and rolls back by reverting the commit |
 | Domain | `sslip.io` wildcard DNS (`<name>.<ip>.sslip.io`), so no domain purchase is needed. The hostnames embed the load balancer IP |
 | Helm 4.x | Helm 4.3.0 |
@@ -299,9 +308,11 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
   restricts the databases namespace to the backend, Prometheus and the backup
   job; other namespaces have no such policy, and there are no
   `NetworkPolicy` objects.
-- **Pull-request checks are not enforced.** Lint, tests and scans run on
-  every PR, but required checks and required approvals need a paid GitHub
-  plan for a private repository, so a failing PR can still be merged.
+- **Pull requests need passing checks but no second approver.** `main` is
+  protected by a ruleset (`.github/rulesets/`): a pull request and four
+  passing checks are required, and only the deploy workflow's key may bypass
+  it. Required approvals is 0 because a sole maintainer cannot approve their
+  own pull request; the human approval sits on the prod deployment instead.
 - **CI uses a long-lived service-account token** (narrowly scoped).
 - **Alertmanager has no receiver configured**; alerts are visible in
   Prometheus, Alertmanager and Grafana but are not sent anywhere.
@@ -317,9 +328,9 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
   database credentials (short-lived, per-pod) instead of static passwords.
 - **Authorisation everywhere** — extend `AuthorizationPolicy` to the app,
   monitoring and Vault namespaces, plus default-deny `NetworkPolicy`.
-- **Enforced review** — branch protection with required checks and a human
-  approval, with the deploy bot committing to a separate branch that Argo CD
-  tracks; a manual approval gate before prod.
+- **Second reviewer** — raise required pull-request approvals to 1 once
+  there is more than one maintainer; keep image tags on a separate branch so
+  no identity needs to bypass the ruleset at all.
 - **Policy at scale** — Kyverno or `ValidatingAdmissionPolicy` once rules
   outgrow a purpose-built webhook; image signature verification with cosign.
 - **DNS and identity** — a real domain with `external-dns`, so hostnames

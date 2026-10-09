@@ -181,6 +181,9 @@ jobs:
   scan-repo:
     name: scan repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload findings to the repository's Security tab
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -205,13 +208,30 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "0"
 
+      # The same findings as SARIF, uploaded to GitHub code scanning: the
+      # Security tab then lists them by severity and tracks each one as open
+      # or fixed across commits, instead of them living only in a job log.
+      # Skipped for pull requests from forks, whose token is read-only.
+      - name: Trivy scan for the Security tab
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy.sarif
+          exit-code: "0"
+      - name: Upload findings to code scanning
+        if: github.event.pull_request.head.repo.fork != true
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy.sarif
+
   # Deploy only what was built from main, and only after lint, tests and both
   # scans passed.
   deploy:
     if: github.event_name == 'push'
     needs: [lint, build, scan-repo]
-    permissions:
-      contents: write   # the deploy job commits the new image tag
     uses: ./.github/workflows/deploy.yaml
     with:
       tag: ${{ needs.build.outputs.tag }}
