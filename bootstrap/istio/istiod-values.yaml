@@ -1,0 +1,14 @@
+# istiod (control plane) in ambient mode.
+# profile=ambient makes istiod program ztunnel instead of injecting sidecars.
+profile: ambient
+
+# The chart ships an HPA for istiod (1-5 replicas), which overrides any fixed
+# replicaCount. Raising the floor to two means the control plane survives a
+# node drain. If istiod is down, existing traffic keeps flowing but new pods
+# get no certificates or config.
+autoscaleMin: 2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi

@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    rollingUpdate:
+      # Never drop below the desired replica count during a rollout: start a
+      # new pod first, and only remove an old one once the new one is Ready.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      imagePullSecrets:
+        - name: vultr-registry
+      # The app never calls the Kubernetes API, so do not hand it a token.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # Block syscalls outside the container runtime's default allow-list.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: blr.vultrcr.com/vultrdevopsprod/frontend
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The binary writes nothing to disk, so no emptyDir is needed.
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            # Requests are what the scheduler reserves and what HPA CPU
+            # percentages are measured against. No CPU limit: a CPU limit
+            # throttles even when the node is idle; memory is limited because
+            # memory cannot be throttled, only OOM-killed.
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          # startup: gates the other two until the app has booted, so a slow
+          #          start is not mistaken for a hang. Up to 30 x 2s = 60s.
+          # liveness: restart the container if the process is stuck.
+          # readiness: remove the pod from the Service while it cannot serve.
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

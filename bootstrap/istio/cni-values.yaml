@@ -1,0 +1,6 @@
+# istio-cni node agent. In ambient mode this is what redirects a pod's traffic
+# into the node's ztunnel — there is no sidecar and no init container to do it.
+# VKE uses Calico, with CNI binaries and config in the standard paths
+# (/opt/cni/bin, /etc/cni/net.d), so the chart defaults are correct; istio-cni
+# chains itself after Calico rather than replacing it.
+profile: ambient

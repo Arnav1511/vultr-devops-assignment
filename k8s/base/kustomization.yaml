@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: app
+resources:
+  - namespace.yaml
+  - backend.yaml
+  - frontend.yaml
+  - gateway.yaml
+# Images are pinned to the git SHA that built them, never :latest, so a
+# rollback is a known artefact and CI changes exactly one line here.
+images:
+  - name: blr.vultrcr.com/vultrdevopsprod/backend
+    newTag: "92a8bd0"
+  - name: blr.vultrcr.com/vultrdevopsprod/frontend
+    newTag: "92a8bd0"

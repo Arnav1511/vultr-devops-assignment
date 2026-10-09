@@ -1,0 +1,14 @@
+# Mesh-wide STRICT mTLS. Placing it in istio-system (the root namespace) makes
+# it apply to every namespace.
+#
+# Without this the default is PERMISSIVE: ambient workloads still use mTLS with
+# each other, but a pod outside the mesh could reach them in plain text.
+# STRICT rejects that plain-text traffic.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT

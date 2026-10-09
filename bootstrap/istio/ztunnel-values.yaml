@@ -1,0 +1,8 @@
+# ztunnel: one pod per node (DaemonSet). It terminates and originates mTLS for
+# every ambient-enrolled pod on that node (L4 only: identity, encryption, TCP
+# authorization). L7 features would need a waypoint proxy, which this project
+# does not use — path routing happens at the ingress Gateway instead.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
