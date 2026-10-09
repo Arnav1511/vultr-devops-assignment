@@ -9,9 +9,9 @@ resources:
 # deploy workflow rewrites these two lines; reverting that commit is a rollback.
 images:
   - name: blr.vultrcr.com/vultrdevopsprod/backend
-    newTag: "7167662"
+    newTag: "00e99fb"
   - name: blr.vultrcr.com/vultrdevopsprod/frontend
-    newTag: "7167662"
+    newTag: "00e99fb"
 # Full scaling range.
 patches:
   - target:
