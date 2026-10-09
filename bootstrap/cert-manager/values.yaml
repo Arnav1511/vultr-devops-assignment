@@ -1,0 +1,9 @@
+# cert-manager: requests and renews Let's Encrypt certificates automatically.
+crds:
+  enabled: true
+config:
+  apiVersion: controller.config.cert-manager.io/v1alpha1
+  kind: ControllerConfiguration
+  # Off by default. Lets cert-manager read the annotation on a Gateway and
+  # solve ACME challenges by creating a temporary HTTPRoute.
+  enableGatewayAPI: true

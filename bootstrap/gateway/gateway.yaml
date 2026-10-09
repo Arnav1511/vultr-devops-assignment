@@ -8,24 +8,48 @@
 # Why its own namespace rather than the app's: one Gateway means one Vultr load
 # balancer shared by the app and Grafana. A Gateway per namespace would be one
 # billed load balancer and one public IP each.
+#
+# Hostnames use sslip.io, a free wildcard DNS service: <name>.<ip>.sslip.io
+# resolves to <ip>. If the load balancer is ever recreated the IP changes and
+# these hostnames must be updated here and in the HTTPRoutes.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: ingress
+  labels:
+    # cert-manager creates its temporary ACME challenge HTTPRoute in this
+    # namespace, so it needs permission to attach too.
+    gateway-access: "true"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: public
   namespace: ingress
+  annotations:
+    # cert-manager watches this and issues a certificate for each HTTPS
+    # listener below, storing it in the Secret the listener references.
+    cert-manager.io/cluster-issuer: letsencrypt
 spec:
   gatewayClassName: istio
   listeners:
+    # Port 80 exists only for the ACME challenge and the redirect to HTTPS.
     - name: http
       port: 80
       protocol: HTTP
       allowedRoutes:
         namespaces:
+          from: Same
+    - name: https-app
+      port: 443
+      protocol: HTTPS
+      hostname: app.139.84.159.60.sslip.io
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: app-tls
+      allowedRoutes:
+        namespaces: &labelled
           # Opt-in: only namespaces carrying this label may attach routes, so a
           # workload in an arbitrary namespace cannot publish itself to the
           # internet or hijack an existing path.
@@ -33,3 +57,32 @@ spec:
           selector:
             matchLabels:
               gateway-access: "true"
+    - name: https-grafana
+      port: 443
+      protocol: HTTPS
+      hostname: grafana.139.84.159.60.sslip.io
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: grafana-tls
+      allowedRoutes:
+        namespaces: *labelled
+---
+# Everything arriving on port 80 is redirected to HTTPS. The ACME challenge
+# still works because cert-manager's route matches an exact path, and a more
+# specific match always beats this catch-all.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redirect-to-https
+  namespace: ingress
+spec:
+  parentRefs:
+    - name: public
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

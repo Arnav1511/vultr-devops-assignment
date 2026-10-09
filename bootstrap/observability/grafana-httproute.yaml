@@ -10,8 +10,7 @@ spec:
   parentRefs:
     - name: public
       namespace: ingress
-  hostnames:
-    - grafana.139.84.159.60.sslip.io
+      sectionName: https-grafana
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana

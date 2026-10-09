@@ -79,7 +79,7 @@ grafana:
 
   grafana.ini:
     server:
-      root_url: http://grafana.139.84.159.60.sslip.io
+      root_url: https://grafana.139.84.159.60.sslip.io
 
   resources:
     requests:

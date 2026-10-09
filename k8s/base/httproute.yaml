@@ -9,6 +9,8 @@ spec:
   parentRefs:
     - name: public
       namespace: ingress
+      # Attach to the HTTPS listener only; port 80 just redirects.
+      sectionName: https-app
   rules:
     # Path-based routing. The most specific prefix wins, so /api goes to the
     # backend and everything else falls through to the frontend. Both are

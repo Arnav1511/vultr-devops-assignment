@@ -1,0 +1,21 @@
+# Let's Encrypt via the HTTP-01 challenge: Let's Encrypt fetches a token from
+# http://<host>/.well-known/acme-challenge/..., which proves control of the
+# hostname. cert-manager serves the token through a temporary HTTPRoute on the
+# public Gateway. Rejected alternative: DNS-01, which needs API access to a DNS
+# zone — sslip.io is not a zone we control.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-account-key
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: public
+                namespace: ingress
+                kind: Gateway
