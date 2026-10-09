@@ -21,3 +21,8 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   -n monitoring --version 92.2.0 -f kube-prometheus-stack-values.yaml --wait --timeout 10m
 
 kubectl apply -f grafana-httproute.yaml
+
+# Custom alert rules, mesh metrics and the two custom dashboards.
+kubectl apply -f alerts.yaml
+kubectl apply -f ztunnel-podmonitor.yaml
+kubectl apply -k dashboards

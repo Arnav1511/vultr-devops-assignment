@@ -1,0 +1,92 @@
+# Custom alerting rules, on top of the defaults shipped by kube-prometheus-stack.
+# Every rule has a "for" duration so a single bad scrape or a brief blip does
+# not fire an alert; the condition must hold for that long.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: application
+      rules:
+        # Symptom-based: users are receiving errors. A ratio rather than a raw
+        # count, so it means the same thing at 1 req/s and at 1000 req/s.
+        - alert: BackendHighErrorRate
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="backend",code=~"5.."}[5m]))
+              /
+            sum by (namespace) (rate(http_requests_total{job="backend"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Backend 5xx rate above 5% in {{ $labels.namespace }}"
+            description: "{{ $value | humanizePercentage }} of backend requests have failed over the last 5 minutes."
+
+        # p95, not the average: an average hides a slow tail that real users hit.
+        - alert: BackendHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, le) (rate(http_request_duration_seconds_bucket{job="backend",route=~".*/api/.*"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend p95 latency above 500ms in {{ $labels.namespace }}"
+            description: "95th percentile API latency is {{ $value | humanizeDuration }}."
+
+        # The backend's own view of its databases. This fires even if the
+        # database pod looks healthy but is unreachable from the app
+        # (network policy, mesh, credentials).
+        - alert: BackendDependencyDown
+          expr: max by (namespace, dependency) (backend_dependency_up) == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Backend cannot reach {{ $labels.dependency }} in {{ $labels.namespace }}"
+            description: "Every backend pod has failed its {{ $labels.dependency }} health check for 2 minutes."
+
+    - name: infrastructure
+      rules:
+        - alert: PodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} is restarting repeatedly"
+            description: "Container {{ $labels.container }} restarted {{ $value | humanize }} times in 15 minutes."
+
+        # The exporter sidecar reports whether it can log in to its database.
+        - alert: DatabaseDown
+          expr: pg_up == 0 or redis_up == 0 or mongodb_up == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Database {{ $labels.pod }} is down"
+            description: "The exporter for {{ $labels.pod }} has been unable to connect for 2 minutes."
+
+        # A full volume stops a database from accepting writes. 15% free
+        # leaves time to expand the volume before that happens.
+        - alert: PersistentVolumeFillingUp
+          expr: |
+            kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.15
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Volume {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is over 85% full"
+            description: "Only {{ $value | humanizePercentage }} of the volume is free."
+
+        - alert: NodeMemoryHigh
+          expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} memory above 90%"
+            description: "Pods on this node are at risk of eviction."

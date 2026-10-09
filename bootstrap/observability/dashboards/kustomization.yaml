@@ -1,0 +1,18 @@
+# Dashboards as code: each JSON file becomes a ConfigMap, and Grafana's sidecar
+# loads every ConfigMap labelled grafana_dashboard. Editing a dashboard means
+# editing the JSON in git and re-applying, so it is reviewed and versioned.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+generatorOptions:
+  # Stable ConfigMap names; the sidecar reloads on content change anyway.
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+configMapGenerator:
+  - name: dashboard-application
+    files:
+      - application.json
+  - name: dashboard-infrastructure
+    files:
+      - infrastructure.json
