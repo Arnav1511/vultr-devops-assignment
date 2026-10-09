@@ -1,0 +1,20 @@
+# Terraform — state and tfvars can contain credentials
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+backend.hcl
+crash.log
+
+# Secrets and local kube access
+.env
+*.kubeconfig
+kubeconfig*
+
+# Build output
+app/backend/bin/
+
+# Local AI-assistant context, not part of the submission
+CLAUDE.md
+.claude/

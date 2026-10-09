@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vultr DevOps Assignment</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ccc; }
+    .ok { color: #1a7f37; } .err { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Vultr DevOps Assignment</h1>
+  <p>Backend status: <strong id="state">loading…</strong></p>
+  <table id="details"></table>
+  <button id="refresh">Refresh</button>
+
+  <script>
+    // Relative URL: same origin as this page. The Gateway routes /api to the backend.
+    async function load() {
+      const state = document.getElementById('state');
+      const table = document.getElementById('details');
+      try {
+        const res = await fetch('/api/status');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        state.textContent = 'reachable';
+        state.className = 'ok';
+        table.replaceChildren(...Object.entries(data).map(([k, v]) => {
+          const row = document.createElement('tr');
+          const key = document.createElement('th');
+          const val = document.createElement('td');
+          key.textContent = k;
+          val.textContent = v;
+          row.append(key, val);
+          return row;
+        }));
+      } catch (e) {
+        state.textContent = 'unreachable (' + e.message + ')';
+        state.className = 'err';
+        table.replaceChildren();
+      }
+    }
+    document.getElementById('refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Copy to backend.hcl and fill in. Used by: terraform init -backend-config=backend.hcl
+bucket = "CHANGE-ME-tfstate"
+key    = "vke/terraform.tfstate"
+endpoints = {
+  s3 = "https://blr1.vultrobjects.com"
+}
