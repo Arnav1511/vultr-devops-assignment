@@ -1,0 +1,20 @@
+# Argo CD: watches this git repository and makes the cluster match it.
+# Its namespace is not in the ambient mesh: Argo CD only talks to the
+# Kubernetes API and to GitHub, never to mesh workloads.
+
+dex:
+  # Dex provides SSO (GitHub/Google login). Only the built-in admin account is
+  # used here, so it would be an unused component to patch and explain.
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  # Three explicit Application manifests are easier to read than a generator.
+  enabled: false
+
+configs:
+  params:
+    # The UI is reached through `kubectl port-forward`, which is already an
+    # authenticated, encrypted tunnel, so argocd-server does not need its own
+    # self-signed TLS on top.
+    server.insecure: true

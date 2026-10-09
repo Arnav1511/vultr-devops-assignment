@@ -1,0 +1,63 @@
+# One Application per environment, each pointing at its Kustomize overlay.
+#
+# automated.prune:    a resource deleted from git is deleted from the cluster.
+# automated.selfHeal: a manual change in the cluster (kubectl edit, scale,
+#                     delete) is reverted to what git says, within seconds.
+# Together they make git the only way to change these namespaces — which is
+# also why a rollback is a `git revert`, not `kubectl rollout undo`: Argo CD
+# would undo the undo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-dev
+  namespace: argocd
+  # Deleting the Application also deletes what it deployed.
+  finalizers: ["resources-finalizer.argocd.argoproj.io"]
+spec: &spec
+  project: default
+  source: &source
+    repoURL: git@github.com:Arnav1511/vultr-devops-assignment.git
+    targetRevision: main
+    path: k8s/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-staging
+  namespace: argocd
+  finalizers: ["resources-finalizer.argocd.argoproj.io"]
+spec:
+  <<: *spec
+  source:
+    <<: *source
+    path: k8s/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-staging
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-prod
+  namespace: argocd
+  finalizers: ["resources-finalizer.argocd.argoproj.io"]
+spec:
+  <<: *spec
+  source:
+    <<: *source
+    path: k8s/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-prod
