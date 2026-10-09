@@ -9,3 +9,7 @@ metadata:
     # redirects their traffic through the node's ztunnel, which gives them mTLS
     # with no sidecar and no pod restart.
     istio.io/dataplane-mode: ambient
+    # Opts this namespace in to the admission webhook (bootstrap/policy): Pods
+    # and Deployments here are rejected if they use :latest, lack resource
+    # limits or the app/owner labels, or allow privilege escalation.
+    policy-enforcement: enabled

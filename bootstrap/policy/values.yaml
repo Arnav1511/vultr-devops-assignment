@@ -1,0 +1,32 @@
+# k8s-policy-webhook: a validating admission webhook that rejects Pods and
+# Deployments which break the rules below. It turns the security and hygiene
+# settings in k8s/base from a convention into something the cluster enforces.
+# Source: https://github.com/Arnav1511/Kubernetes-admission-webhook
+
+image:
+  # The newest image the project has published. Pinned to a commit-SHA tag, so
+  # the webhook itself obeys its own "no :latest" rule.
+  tag: sha-680704b
+
+webhook:
+  # Fail closed: if the webhook is unreachable, the request is denied rather
+  # than waved through. Safe only because of the opt-in scope below and the
+  # two replicas + PDB the chart ships with.
+  failurePolicy: Fail
+  # Opt-in by namespace label. Rejected alternative: enforce everywhere and
+  # list exemptions. With failurePolicy=Fail, a missed exemption would stop
+  # Istio, the databases or the monitoring stack from starting.
+  namespaceSelector:
+    matchLabels:
+      policy-enforcement: enabled
+
+policy:
+  blockLatestTag: true          # images must carry an explicit tag or digest
+  requireResourceLimits: true   # every container needs CPU and memory limits
+  blockHostNetwork: true
+  blockPrivilegeEscalation: true
+  requireLabels:                # needed for ownership and for selectors
+    - app
+    - owner
+  # Above the largest HPA ceiling (6), low enough to stop a typo like 600.
+  maxReplicaCount: 10
