@@ -110,7 +110,7 @@ safe to re-run.
 | 6 | `bootstrap/secrets/install.sh` | Vault, Vault Secrets Operator, policies, seeded secrets | 5; Terraform env loaded |
 | 7 | `bootstrap/policy/install.sh` | Admission webhook | 2 |
 | 8 | `bootstrap/argocd/install.sh` | Argo CD, deploy key, three Applications | 6, 7; `gh` logged in |
-| 9 | `bootstrap/ci-access/install.sh` | CI service account, GitHub Actions secrets | 8; `gh` logged in |
+| 9 | `bootstrap/ci-access/install.sh` | CI service account, GitHub Actions secrets, deploy key, branch ruleset, prod approval gate | 8; `gh` logged in |
 
 ### After step 3: set the hostnames
 
@@ -145,9 +145,12 @@ kubectl get vaultstaticsecret -A                 # all synced
 ### Normal path: push to `main`
 
 ```
-edit app/** → pull request → build-scan runs (build + Trivy + SBOM, no push)
-            → merge → images pushed as :<short-sha>
-            → deploy: dev → staging → prod, each verified and smoke-tested
+edit app/** → pull request → lint, tests, build, Trivy, SBOM (no push)
+            → merge (blocked until those checks pass)
+            → images pushed as :<short-sha>
+            → deploy dev → staging, each verified and smoke-tested
+            → run pauses: approve it under Actions → the run → "Review deployments"
+            → deploy prod, verified and smoke-tested
 ```
 
 Nothing is applied by hand. The deploy job commits the new tag to
@@ -155,8 +158,8 @@ Nothing is applied by hand. The deploy job commits the new tag to
 
 ### Manifest-only changes
 
-Edit files under `k8s/` and push. Argo CD picks the change up within three
-minutes; no pipeline is involved.
+Edit files under `k8s/` and merge through a pull request. Argo CD picks the
+change up within three minutes; no deploy pipeline is involved.
 
 ### Deploying a specific version manually
 

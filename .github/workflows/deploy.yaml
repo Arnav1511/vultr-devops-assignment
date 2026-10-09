@@ -1,5 +1,7 @@
 # Promotes one image tag through dev -> staging -> prod.
 #
+# dev and staging deploy automatically; prod waits for a human approval.
+#
 # Each stage: commit the tag to that environment's Kustomize overlay, wait for
 # Argo CD to apply it, verify the rollout, run smoke tests, and revert the
 # commit automatically if anything fails. A failure stops the promotion, so a
@@ -29,8 +31,9 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 
+# The tag commit is pushed with the deploy key, so the token only needs to read.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dev:
@@ -39,6 +42,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          # main is protected: changes need a pull request and passing checks.
+          # The image-tag commit is the one automated exception, made with a
+          # write deploy key that the branch ruleset allows to bypass. The
+          # default GITHUB_TOKEN cannot be granted that bypass.
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
       # The kubeconfig belongs to a service account that can only watch
       # rollouts and port-forward (bootstrap/ci-access). It is written to the
       # runner's temp directory, which is destroyed with the runner.
@@ -62,4 +70,9 @@ jobs:
   prod:
     needs: staging
     runs-on: ubuntu-latest
+    # The "prod" environment has a required reviewer, so the run pauses here
+    # until a person approves it in the Actions UI. dev and staging have
+    # already been deployed and smoke-tested by this point, so the approver is
+    # deciding on a version that is running and verified.
+    environment: prod
     steps: *deploy-steps

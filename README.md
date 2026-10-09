@@ -77,6 +77,8 @@ Beyond the specification:
 - **Admission webhook** — enforces image, label, limit and privilege policy in the app namespaces ([bootstrap/policy/](bootstrap/policy/))
 - **HTTPS** — Let's Encrypt certificates through cert-manager ([bootstrap/cert-manager/](bootstrap/cert-manager/))
 - **Least-privilege CI** — the pipeline's cluster account can only watch rollouts ([bootstrap/ci-access/](bootstrap/ci-access/))
+- **Protected `main` and a human gate on prod** — merges need a pull request with passing lint, tests, builds and scans; production deploys wait for an approval ([.github/rulesets/](.github/rulesets/))
+- **Database access policy and backups** — only the backend's mesh identity may reach the databases; nightly dumps to object storage ([bootstrap/databases/](bootstrap/databases/))
 
 ## Documentation
 
