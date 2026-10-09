@@ -49,7 +49,20 @@ verify_rollout() {
 # Smoke tests: prove the new version actually serves requests, which a
 # successful rollout alone does not. Run through a port-forward so dev and
 # staging can be tested without being exposed publicly.
+#
+# Retried: right after a rollout (and especially after a rollback) a pod from
+# the old ReplicaSet can still be terminating, and a port-forward that lands
+# on it fails even though the Service is healthy.
 smoke_test() {
+  local want=$1
+  for attempt in 1 2 3; do
+    if smoke_once "$want"; then return 0; fi
+    if [[ $attempt -lt 3 ]]; then echo "  smoke tests failed (attempt ${attempt}/3), retrying in 15s"; sleep 15; fi
+  done
+  return 1
+}
+
+smoke_once() {
   local want=$1 pf_backend pf_frontend rc=0
   kubectl -n "$NS" port-forward svc/backend 18080:80 >/dev/null 2>&1 & pf_backend=$!
   kubectl -n "$NS" port-forward svc/frontend 18081:80 >/dev/null 2>&1 & pf_frontend=$!
@@ -76,6 +89,7 @@ smoke_test() {
   fi
 
   kill "$pf_backend" "$pf_frontend" 2>/dev/null || true
+  wait "$pf_backend" "$pf_frontend" 2>/dev/null || true
   return $rc
 }
 
