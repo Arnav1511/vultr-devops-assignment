@@ -8,9 +8,9 @@ resources:
 # deploy workflow rewrites these two lines; reverting that commit is a rollback.
 images:
   - name: blr.vultrcr.com/vultrdevopsprod/backend
-    newTag: "00e99fb"
+    newTag: "866a89e"
   - name: blr.vultrcr.com/vultrdevopsprod/frontend
-    newTag: "00e99fb"
+    newTag: "866a89e"
 # Same shape as prod (two replicas, so PDB and anti-affinity are exercised) with a lower ceiling.
 patches:
   - target:
