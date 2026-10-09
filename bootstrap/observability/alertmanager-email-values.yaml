@@ -1,0 +1,9 @@
+# Layered on top of kube-prometheus-stack-values.yaml once alert e-mail is
+# configured (see alertmanager-email.sh). Tells the operator to take
+# Alertmanager's whole configuration from a Secret instead of generating the
+# chart's default, which has no working receiver. A Secret because the
+# configuration contains the SMTP password and the recipient address, neither
+# of which belongs in git.
+alertmanager:
+  alertmanagerSpec:
+    configSecret: alertmanager-email-config

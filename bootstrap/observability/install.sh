@@ -17,8 +17,16 @@ if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
 fi
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+# If alert e-mail has been set up (alertmanager-email.sh), keep using its
+# configuration; otherwise a re-run would silently switch e-mail off.
+EMAIL_VALUES=()
+if kubectl -n monitoring get secret alertmanager-email-config >/dev/null 2>&1; then
+  EMAIL_VALUES=(-f alertmanager-email-values.yaml)
+fi
+
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -n monitoring --version 92.2.0 -f kube-prometheus-stack-values.yaml --wait --timeout 10m
+  -n monitoring --version 92.2.0 -f kube-prometheus-stack-values.yaml "${EMAIL_VALUES[@]}" \
+  --wait --timeout 10m
 
 kubectl apply -f grafana-httproute.yaml
 
