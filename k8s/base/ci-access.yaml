@@ -1,0 +1,30 @@
+# What the GitHub Actions deploy workflow may do in this namespace: watch a
+# rollout and open a port-forward for smoke tests. It cannot create, change or
+# delete anything here — changes arrive only through git and Argo CD.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-verify
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ci-verify
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ci-verify
+subjects:
+  - kind: ServiceAccount
+    name: github-deployer
+    namespace: ci

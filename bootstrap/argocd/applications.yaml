@@ -13,9 +13,9 @@ metadata:
   namespace: argocd
   # Deleting the Application also deletes what it deployed.
   finalizers: ["resources-finalizer.argocd.argoproj.io"]
-spec: &spec
+spec:
   project: default
-  source: &source
+  source:
     repoURL: git@github.com:Arnav1511/vultr-devops-assignment.git
     targetRevision: main
     path: k8s/overlays/dev
@@ -37,27 +37,49 @@ kind: Application
 metadata:
   name: app-staging
   namespace: argocd
+  # Deleting the Application also deletes what it deployed.
   finalizers: ["resources-finalizer.argocd.argoproj.io"]
 spec:
-  <<: *spec
+  project: default
   source:
-    <<: *source
+    repoURL: git@github.com:Arnav1511/vultr-devops-assignment.git
+    targetRevision: main
     path: k8s/overlays/staging
   destination:
     server: https://kubernetes.default.svc
     namespace: app-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: app-prod
   namespace: argocd
+  # Deleting the Application also deletes what it deployed.
   finalizers: ["resources-finalizer.argocd.argoproj.io"]
 spec:
-  <<: *spec
+  project: default
   source:
-    <<: *source
+    repoURL: git@github.com:Arnav1511/vultr-devops-assignment.git
+    targetRevision: main
     path: k8s/overlays/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: app-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2

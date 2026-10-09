@@ -1,0 +1,154 @@
+# Builds, scans and (on main) publishes the two container images.
+#
+# Third-party actions are pinned to a full commit SHA, not a tag: a tag can be
+# moved to point at different code, a commit SHA cannot. The comment after each
+# SHA records which release it is.
+name: build-scan
+
+on:
+  # Every pull request is built and scanned, but never pushed.
+  pull_request:
+  push:
+    branches: [main]
+    # Only application changes need a new image. Manifest-only changes are
+    # picked up from git by Argo CD without any pipeline.
+    paths:
+      - "app/**"
+      - ".github/workflows/build-scan.yaml"
+  workflow_dispatch:
+
+# Default to read-only; jobs that need more ask for it explicitly.
+permissions:
+  contents: read
+
+env:
+  REGISTRY: blr.vultrcr.com
+  IMAGE_PREFIX: blr.vultrcr.com/vultrdevopsprod
+
+jobs:
+  build:
+    name: build ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Scan both images even if one fails, so a PR shows every problem at once.
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The tag is the short commit SHA: unique, immutable, and it maps a
+      # running pod straight back to the code that built it.
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # No QEMU step: the Dockerfiles cross-compile Go on the runner's native
+      # CPU, so the arm64 image builds without emulation.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # 1. Build one architecture into the local Docker daemon so it can be
+      #    scanned before anything is published.
+      - name: Build image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app/${{ matrix.component }}
+          platforms: linux/amd64
+          load: true
+          tags: scan/${{ matrix.component }}:${{ steps.meta.outputs.tag }}
+          build-args: VERSION=${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,scope=${{ matrix.component }},mode=max
+
+      # 2. Report everything HIGH and above for visibility...
+      - name: Trivy report (HIGH and CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: scan/${{ matrix.component }}:${{ steps.meta.outputs.tag }}
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: "0"
+
+      # 3. ...but only CRITICAL fails the build, as the spec requires. Unfixed
+      #    vulnerabilities are ignored because no rebuild can remove them;
+      #    failing on them would block every release with nothing to act on.
+      - name: Trivy gate (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: scan/${{ matrix.component }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+      - name: Log in to Vultr Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      # 4. Build both architectures. On a pull request this only proves that
+      #    arm64 compiles; on main it pushes. The amd64 layers come from the
+      #    cache written in step 1.
+      - name: Build multi-arch image (push on main)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app/${{ matrix.component }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}:main
+          build-args: VERSION=${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+
+      # 5. Software bill of materials: every Go module compiled into the
+      #    image, so a future CVE can be matched against what is deployed
+      #    without rebuilding or rescanning.
+      - name: Generate SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: scan/${{ matrix.component }}:${{ steps.meta.outputs.tag }}
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.component }}.spdx.json
+
+  scan-repo:
+    name: scan repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Dependency vulnerabilities (go.mod) and committed secrets. Blocking.
+      - name: Trivy filesystem scan (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # Kubernetes, Helm, Terraform and Dockerfile misconfigurations. Report
+      # only: findings here are design decisions to review, not CVEs to patch.
+      - name: Trivy configuration scan (report only)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+  # Deploy only what was built from main, and only after both scans passed.
+  deploy:
+    if: github.event_name == 'push'
+    needs: [build, scan-repo]
+    permissions:
+      contents: write   # the deploy job commits the new image tag
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      tag: ${{ needs.build.outputs.tag }}
+    secrets: inherit

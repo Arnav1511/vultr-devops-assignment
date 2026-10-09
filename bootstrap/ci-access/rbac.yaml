@@ -1,0 +1,52 @@
+# Identity used by GitHub Actions. Deliberately not the cluster-admin
+# kubeconfig from Terraform: if the GitHub secret leaked, this account can only
+# watch rollouts in the app namespaces (see k8s/base/ci-access.yaml) and ask
+# Argo CD to refresh. It cannot read Secrets or change workloads.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ci
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-deployer
+  namespace: ci
+---
+# A long-lived token for the service account. Kubernetes fills in the token
+# because of the annotation. Rejected alternative: short-lived tokens via OIDC
+# federation, which VKE's managed API server cannot be configured for here.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-deployer-token
+  namespace: ci
+  annotations:
+    kubernetes.io/service-account.name: github-deployer
+type: kubernetes.io/service-account-token
+---
+# Read Application status, and "patch" only so the workflow can add the
+# refresh annotation instead of waiting for Argo CD's 3-minute poll.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-argocd-refresh
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ci-argocd-refresh
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ci-argocd-refresh
+subjects:
+  - kind: ServiceAccount
+    name: github-deployer
+    namespace: ci

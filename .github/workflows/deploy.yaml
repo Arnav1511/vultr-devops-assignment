@@ -1,0 +1,65 @@
+# Promotes one image tag through dev -> staging -> prod.
+#
+# Each stage: commit the tag to that environment's Kustomize overlay, wait for
+# Argo CD to apply it, verify the rollout, run smoke tests, and revert the
+# commit automatically if anything fails. A failure stops the promotion, so a
+# version that breaks dev never reaches prod. The logic is in
+# .github/scripts/deploy.sh so it can also be run and debugged locally.
+name: deploy
+
+on:
+  # Called by build-scan after a successful build on main.
+  workflow_call:
+    inputs:
+      tag:
+        description: Image tag (short commit SHA) to deploy
+        type: string
+        required: true
+  # Manual run: redeploy or roll back to any tag that exists in the registry.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag (short commit SHA) to deploy
+        type: string
+        required: true
+
+# One deployment at a time. A second run waits instead of cancelling the
+# first: cancelling mid-deploy could leave an environment half-verified.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  dev:
+    runs-on: ubuntu-latest
+    steps: &deploy-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      # The kubeconfig belongs to a service account that can only watch
+      # rollouts and port-forward (bootstrap/ci-access). It is written to the
+      # runner's temp directory, which is destroyed with the runner.
+      - name: Configure cluster access
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBECONFIG_CONTENT" > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Deploy, verify, roll back on failure
+        env:
+          TAG: ${{ inputs.tag }}
+        run: .github/scripts/deploy.sh "$GITHUB_JOB" "$TAG"
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    steps: *deploy-steps
+
+  prod:
+    needs: staging
+    runs-on: ubuntu-latest
+    steps: *deploy-steps
