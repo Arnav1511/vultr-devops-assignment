@@ -124,6 +124,13 @@ kubectl apply -f bootstrap/gateway/gateway.yaml
 kubectl -n ingress get certificate      # READY=True within about a minute
 ```
 
+### After step 4 (optional): alert e-mail
+
+Add `SMTP_USERNAME`, `SMTP_PASSWORD` (for Gmail, an app password) and
+`ALERT_EMAIL_TO` to `.env`, load it, and run
+`bootstrap/observability/alertmanager-email.sh`. Without this, alerts are
+visible in Prometheus and Grafana but are not sent anywhere.
+
 ### After step 6: keep the Vault keys safe
 
 `bootstrap/secrets/.vault-init.json` (git-ignored) holds the unseal key and

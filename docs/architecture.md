@@ -188,6 +188,10 @@ there is no long-lived Vault credential in the cluster.
   `BackendHighErrorRate`, `BackendHighLatency`, `BackendDependencyDown`,
   `PodCrashLooping`, `DatabaseDown`, `PersistentVolumeFillingUp`,
   `NodeMemoryHigh` — in addition to the chart's defaults.
+- **Delivery**: Alertmanager e-mails warnings and criticals, grouped by alert
+  and namespace, re-sent every 4 hours while firing, with a notice when
+  resolved. Its configuration is generated into a Secret so the SMTP password
+  and recipient stay out of git.
 - **Dashboards** (JSON in git, loaded by Grafana's sidecar):
   *Application Overview* (rate, errors, latency percentiles, dependencies,
   replicas vs HPA) and *Infrastructure Overview* (nodes, volumes, databases,
@@ -314,8 +318,10 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
   it. Required approvals is 0 because a sole maintainer cannot approve their
   own pull request; the human approval sits on the prod deployment instead.
 - **CI uses a long-lived service-account token** (narrowly scoped).
-- **Alertmanager has no receiver configured**; alerts are visible in
-  Prometheus, Alertmanager and Grafana but are not sent anywhere.
+- **Alerts go to one e-mail address** through a personal mailbox's SMTP
+  login (`bootstrap/observability/alertmanager-email.sh`). There is no
+  on-call rotation, paging or escalation, and delivery depends on that one
+  mailbox.
 
 ## 6. Suggested advancements
 
