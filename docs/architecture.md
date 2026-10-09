@@ -125,9 +125,12 @@ Points worth knowing:
   pod in the un-enrolled `default` namespace cannot open a connection to the
   backend.
 - **What mTLS does not do.** It authenticates and encrypts pod-to-pod traffic.
-  It does not authorise (any mesh workload may still call any other — that
-  needs `AuthorizationPolicy`), it does not encrypt data at rest, and it does
-  not protect against a compromised pod using its own valid identity.
+  On its own it does not authorise: that is what the `AuthorizationPolicy`
+  on the databases namespace adds, admitting only the backend's identity on
+  the database ports, Prometheus on the exporter ports and the backup job.
+  Each Deployment has its own service account so those identities differ.
+  mTLS also does not encrypt data at rest, and does not protect against a
+  compromised pod using its own valid identity.
 - **Why ambient rather than sidecars.** No proxy container per pod: lower
   memory use, no pod restart to join the mesh, and application pods keep a
   minimal security context. The cost is that L7 features (per-route retries,
@@ -223,6 +226,8 @@ flowchart LR
 **Build and scan** (every pull request, and every push to `main` that touches
 `app/`):
 
+0. Lint and test: `gofmt`, `go vet`, `go test -race`, render every Kustomize
+   overlay, `helm lint`, `terraform validate`, `shellcheck`.
 1. Build the amd64 image and load it locally.
 2. Trivy scans it. HIGH and CRITICAL are reported; a fixable CRITICAL fails
    the build.
@@ -232,6 +237,8 @@ flowchart LR
 4. An SPDX SBOM is attached to the run as an artifact.
 5. In parallel, Trivy scans the repository for vulnerable dependencies and
    committed secrets (blocking) and for misconfigurations (report only).
+6. Outside the pipeline, GitHub Dependabot alerts watch `go.mod` continuously,
+   so a CVE published after a build is still flagged (repository → Security).
 
 **Deploy** (after a successful build on `main`, or manually with any tag):
 for dev, then staging, then prod —
@@ -283,8 +290,18 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
   `bootstrap/secrets/unseal.sh`. Already-synced Secrets keep working meanwhile.
 - **One Vault key share**, held in a git-ignored local file.
 - **Single control plane** (VKE HA control plane not enabled).
-- **No `AuthorizationPolicy` or `NetworkPolicy`.** mTLS authenticates
-  workloads; it does not restrict which may talk to which.
+- **Worker nodes are directly reachable.** Each node has a public IP with SSH
+  and NodePorts open, so the Gateway can be reached without going through the
+  load balancer. VKE's node firewall fixes this but can only be enabled when
+  the cluster is created; enabling it now would replace the cluster. SSH
+  still requires a key, and nothing but the Gateway is exposed on a NodePort.
+- **Authorisation covers the databases only.** An `AuthorizationPolicy`
+  restricts the databases namespace to the backend, Prometheus and the backup
+  job; other namespaces have no such policy, and there are no
+  `NetworkPolicy` objects.
+- **Pull-request checks are not enforced.** Lint, tests and scans run on
+  every PR, but required checks and required approvals need a paid GitHub
+  plan for a private repository, so a failing PR can still be merged.
 - **CI uses a long-lived service-account token** (narrowly scoped).
 - **Alertmanager has no receiver configured**; alerts are visible in
   Prometheus, Alertmanager and Grafana but are not sent anywhere.
@@ -298,8 +315,11 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
   their webhooks.
 - **Vault HA** — three replicas on Raft with transit auto-unseal, and dynamic
   database credentials (short-lived, per-pod) instead of static passwords.
-- **Authorisation** — Istio `AuthorizationPolicy` so only the backend's
-  identity may reach the databases, plus default-deny `NetworkPolicy`.
+- **Authorisation everywhere** — extend `AuthorizationPolicy` to the app,
+  monitoring and Vault namespaces, plus default-deny `NetworkPolicy`.
+- **Enforced review** — branch protection with required checks and a human
+  approval, with the deploy bot committing to a separate branch that Argo CD
+  tracks; a manual approval gate before prod.
 - **Policy at scale** — Kyverno or `ValidatingAdmissionPolicy` once rules
   outgrow a purpose-built webhook; image signature verification with cosign.
 - **DNS and identity** — a real domain with `external-dns`, so hostnames

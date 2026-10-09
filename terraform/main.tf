@@ -21,6 +21,13 @@ resource "vultr_kubernetes" "this" {
   # (replicas, anti-affinity, PDBs) is what is being demonstrated.
   ha_controlplanes = false
 
+  # Known gap: the nodes have public IPs with SSH and NodePorts reachable from
+  # the internet. VKE's managed node firewall would close that, but the
+  # provider can only set it at creation — changing it on a live cluster
+  # forces the whole cluster to be destroyed and recreated. It should be true
+  # on the next rebuild; it is left false here to keep the running deployment.
+  enable_firewall = false
+
   node_pools {
     label         = "${local.name}-default"
     plan          = var.node_plan

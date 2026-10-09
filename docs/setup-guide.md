@@ -106,7 +106,7 @@ safe to re-run.
 | 2 | `bootstrap/cert-manager/install.sh` | cert-manager, Let's Encrypt issuer | Gateway API CRDs |
 | 3 | `kubectl apply -f bootstrap/gateway/gateway.yaml` | Public Gateway, HTTPS listeners, HTTP→HTTPS redirect | 1, 2 |
 | 4 | `bootstrap/observability/install.sh` | metrics-server, Prometheus, Alertmanager, Grafana, alert rules, dashboards | 1, 3 |
-| 5 | `bootstrap/databases/install.sh` | PostgreSQL, MongoDB, Valkey, nightly backup CronJob | 4 (ServiceMonitor CRD) |
+| 5 | `bootstrap/databases/install.sh` | PostgreSQL, MongoDB, Valkey, access policy, nightly backup CronJob | 4 (ServiceMonitor CRD) |
 | 6 | `bootstrap/secrets/install.sh` | Vault, Vault Secrets Operator, policies, seeded secrets | 5; Terraform env loaded |
 | 7 | `bootstrap/policy/install.sh` | Admission webhook | 2 |
 | 8 | `bootstrap/argocd/install.sh` | Argo CD, deploy key, three Applications | 6, 7; `gh` logged in |
