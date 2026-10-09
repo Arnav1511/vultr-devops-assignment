@@ -8,6 +8,9 @@ cd "$(dirname "$0")"
 if kubectl -n vault exec vault-0 -- vault status -format=json 2>/dev/null | grep -q '"sealed": false'; then
   echo "vault is already unsealed"; exit 0
 fi
+# The key is piped in and read by the remote shell, so "$(cat)" must expand
+# inside the pod, not here.
+# shellcheck disable=SC2016
 python3 -c "import json;print(json.load(open('.vault-init.json'))['unseal_keys_b64'][0])" \
   | kubectl -n vault exec -i vault-0 -- sh -c 'vault operator unseal "$(cat)"' >/dev/null
 echo "vault unsealed"

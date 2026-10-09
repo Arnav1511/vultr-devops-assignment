@@ -1,0 +1,40 @@
+# Who may open connections to the databases.
+#
+# mTLS proves *who* a caller is; on its own it does not restrict *what* that
+# caller may reach — without this policy any pod in the mesh could connect to
+# PostgreSQL and only the password would stand in the way. An ALLOW policy
+# flips the namespace to default-deny: anything not listed below is refused
+# by ztunnel before it reaches the database.
+#
+# Enforced at L4 by ztunnel, using the caller's certificate identity (its
+# service account), not its IP address — a pod cannot spoof it.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: database-clients
+  namespace: databases
+spec:
+  action: ALLOW
+  rules:
+    # The backend, in each environment, on the three database ports.
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/app-dev/sa/backend
+              - cluster.local/ns/app-staging/sa/backend
+              - cluster.local/ns/app-prod/sa/backend
+      to:
+        - operation:
+            ports: ["5432", "27017", "6379"]
+    # Prometheus, on the exporter ports only — it can read metrics but cannot
+    # open a database connection.
+    - from:
+        - source:
+            namespaces: ["monitoring"]
+      to:
+        - operation:
+            ports: ["9187", "9216", "9121"]
+    # The nightly backup job, which runs in this namespace.
+    - from:
+        - source:
+            namespaces: ["databases"]

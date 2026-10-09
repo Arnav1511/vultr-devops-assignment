@@ -1,3 +1,13 @@
+# A dedicated service account gives this workload its own mesh identity
+# (spiffe://cluster.local/ns/<namespace>/sa/frontend). With the shared "default"
+# account, the frontend and backend would be indistinguishable to mTLS and to
+# the database AuthorizationPolicy.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,6 +32,7 @@ spec:
         app: frontend
         owner: platform
     spec:
+      serviceAccountName: frontend
       imagePullSecrets:
         - name: vultr-registry
       # The app never calls the Kubernetes API, so do not hand it a token.

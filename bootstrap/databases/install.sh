@@ -29,6 +29,9 @@ for db in postgres mongodb valkey; do
     --wait --timeout 5m
 done
 
+# Restrict database access to the backend, Prometheus and the backup job.
+kubectl apply -f authorization-policy.yaml
+
 # Nightly backups. The job's object storage keys are synced from Vault by
 # bootstrap/secrets/install.sh, so the first run succeeds only after that.
 kubectl apply -f backup-cronjob.yaml

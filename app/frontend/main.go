@@ -29,20 +29,10 @@ var staticFiles embed.FS
 func main() {
 	addr := ":" + getenv("PORT", "8080")
 
-	// Strip the "static/" prefix so static/index.html is served at "/".
-	content, err := fs.Sub(staticFiles, "static")
+	mux, err := newMux()
 	if err != nil {
 		log.Fatalf("embed: %v", err)
 	}
-
-	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServerFS(content))
-	// One endpoint serves all three probes: this process has no dependencies,
-	// so "alive" and "ready" are the same condition.
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
 
 	srv := &http.Server{
 		Addr:              addr,
@@ -67,6 +57,26 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
+}
+
+// newMux builds the routes. Separate from main so tests can exercise it
+// without starting a listener.
+func newMux() (*http.ServeMux, error) {
+	// Strip the "static/" prefix so static/index.html is served at "/".
+	content, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return nil, err
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /", http.FileServerFS(content))
+	// One endpoint serves all three probes: this process has no dependencies,
+	// so "alive" and "ready" are the same condition.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	return mux, nil
 }
 
 func getenv(key, fallback string) string {
