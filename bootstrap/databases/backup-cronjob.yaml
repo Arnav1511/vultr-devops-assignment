@@ -1,0 +1,125 @@
+# Nightly logical backup of all three databases to Vultr Object Storage.
+#
+# Why: the volumes use a "Delete" reclaim policy, so deleting a PVC, the
+# namespace or the cluster destroys the data. A dump in object storage
+# survives all three. It does NOT survive a Bangalore-region outage: the
+# bucket is in the same region as the cluster (a second region would mean a
+# second storage subscription).
+#
+# Shape: three init containers each dump one database, using that database's
+# own image so the client version always matches the server, into a shared
+# emptyDir. The main container then uploads the files. Init containers run in
+# order and the upload only starts if every dump succeeded, so a partial
+# backup is never published as if it were complete.
+#
+# Old backups are removed by a 14-day lifecycle rule on the bucket, not by
+# this job, so the job needs no delete logic.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  namespace: databases
+spec:
+  schedule: "30 20 * * *"        # 20:30 UTC = 02:00 IST, the quietest hour
+  # If a run is still going when the next is due, skip the new one.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # Kill a stuck run after 15 minutes instead of letting it hang forever.
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app: db-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump-postgres
+              image: postgres:17.6-alpine
+              # Custom format (-Fc): compressed, and restorable selectively
+              # with pg_restore.
+              command: ["pg_dump", "-h", "postgres", "-U", "app", "-d", "app", "-Fc", "-f", "/backup/postgres.dump"]
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: db-credentials, key: postgres-password}
+              securityContext: &hardened
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources: &small
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts: &mounts
+                - {name: backup, mountPath: /backup}
+                - {name: tmp, mountPath: /tmp}
+            - name: dump-mongodb
+              image: mongo:8.0.13
+              command: ["sh", "-c", "mongodump --quiet --uri=\"mongodb://root:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin\" --archive=/backup/mongodb.archive.gz --gzip"]
+              env:
+                - name: MONGO_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: db-credentials, key: mongodb-password}
+                - {name: HOME, value: /tmp}
+              securityContext: *hardened
+              resources: *small
+              volumeMounts: *mounts
+            - name: dump-valkey
+              image: valkey/valkey:8.1.4-alpine
+              # --rdb asks the server for a point-in-time snapshot file.
+              command: ["sh", "-c", "valkey-cli --no-auth-warning -h valkey -a \"$VALKEY_PASSWORD\" --rdb /backup/valkey.rdb"]
+              env:
+                - name: VALKEY_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: db-credentials, key: valkey-password}
+              securityContext: *hardened
+              resources: *small
+              volumeMounts: *mounts
+          containers:
+            - name: upload
+              image: curlimages/curl:8.11.1
+              # curl signs S3 requests itself (--aws-sigv4), so no AWS CLI or
+              # other S3 client is needed. Credentials are passed through a
+              # config file on stdin (-K -) so they never appear in the
+              # process list. Each run goes under its own timestamp prefix.
+              command:
+                - sh
+                - -euc
+                - |
+                  stamp=$(date -u +%Y-%m-%dT%H%MZ)
+                  for f in postgres.dump mongodb.archive.gz valkey.rdb; do
+                    test -s "/backup/$f"
+                    printf 'user = "%s:%s"\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" |
+                      curl -fsS -K - --aws-sigv4 "aws:amz:us-east-1:s3" \
+                        -T "/backup/$f" "${S3_ENDPOINT}/${S3_BUCKET}/${stamp}/$f"
+                    echo "uploaded ${stamp}/$f ($(wc -c < "/backup/$f") bytes)"
+                  done
+              env:
+                - {name: S3_ENDPOINT, value: "https://blr1.vultrobjects.com"}
+                - {name: S3_BUCKET, value: arnav1511-vke-backups}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: backup-s3, key: access-key}
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: backup-s3, key: secret-key}
+              securityContext: *hardened
+              resources: *small
+              volumeMounts: *mounts
+          volumes:
+            - name: backup
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

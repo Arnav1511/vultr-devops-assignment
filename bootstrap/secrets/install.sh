@@ -63,6 +63,15 @@ cfg = {'auths': {os.environ['REG_HOST']: {'auth': auth}}}
 print(json.dumps({'.dockerconfigjson': json.dumps(cfg)}))" ) | v kv put secret/app/registry - >/dev/null
 fi
 
+# Seed the object storage keys used by the database backup job, from the
+# same environment variables the Terraform backend uses.
+if ! v kv get secret/app/backup >/dev/null 2>&1; then
+  python3 -c "
+import os, json
+print(json.dumps({'access-key': os.environ['AWS_ACCESS_KEY_ID'], 'secret-key': os.environ['AWS_SECRET_ACCESS_KEY']}))" \
+    | v kv put secret/app/backup - >/dev/null
+fi
+
 helm upgrade --install vault-secrets-operator hashicorp/vault-secrets-operator \
   -n vault --version 1.6.0 -f vso-values.yaml --wait
 

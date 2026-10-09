@@ -106,7 +106,7 @@ safe to re-run.
 | 2 | `bootstrap/cert-manager/install.sh` | cert-manager, Let's Encrypt issuer | Gateway API CRDs |
 | 3 | `kubectl apply -f bootstrap/gateway/gateway.yaml` | Public Gateway, HTTPS listeners, HTTP→HTTPS redirect | 1, 2 |
 | 4 | `bootstrap/observability/install.sh` | metrics-server, Prometheus, Alertmanager, Grafana, alert rules, dashboards | 1, 3 |
-| 5 | `bootstrap/databases/install.sh` | PostgreSQL, MongoDB, Valkey | 4 (ServiceMonitor CRD) |
+| 5 | `bootstrap/databases/install.sh` | PostgreSQL, MongoDB, Valkey, nightly backup CronJob | 4 (ServiceMonitor CRD) |
 | 6 | `bootstrap/secrets/install.sh` | Vault, Vault Secrets Operator, policies, seeded secrets | 5; Terraform env loaded |
 | 7 | `bootstrap/policy/install.sh` | Admission webhook | 2 |
 | 8 | `bootstrap/argocd/install.sh` | Argo CD, deploy key, three Applications | 6, 7; `gh` logged in |
@@ -237,6 +237,40 @@ kubectl -n argocd patch application app-prod --type merge \
 # ...investigate...
 kubectl apply -f bootstrap/argocd/applications.yaml          # re-enable
 ```
+
+### Restoring a database from backup
+
+A CronJob (`bootstrap/databases/backup-cronjob.yaml`) dumps all three
+databases to the `arnav1511-vke-backups` bucket every night at 20:30 UTC,
+under a timestamp prefix; a bucket lifecycle rule deletes dumps after 14 days.
+
+```bash
+# Take a backup now, outside the schedule
+kubectl -n databases create job --from=cronjob/db-backup backup-manual
+kubectl -n databases logs job/backup-manual -c upload
+
+# Download one backup (pick a prefix from the upload log)
+s3() { curl -s --aws-sigv4 "aws:amz:us-east-1:s3" \
+         --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" "$@"; }
+P=https://blr1.vultrobjects.com/arnav1511-vke-backups/<timestamp>
+for f in postgres.dump mongodb.archive.gz valkey.rdb; do s3 -o $f $P/$f; done
+
+# PostgreSQL: --clean drops existing objects before recreating them
+kubectl -n databases exec -i postgres-0 -c db -- \
+  pg_restore -U app -d app --clean --if-exists < postgres.dump
+
+# MongoDB: --drop replaces each collection found in the archive
+kubectl -n databases exec -i mongodb-0 -c db -- sh -c \
+  'mongorestore --gzip --archive --drop -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
+  < mongodb.archive.gz
+```
+
+Valkey holds only the visit counter. To restore it, copy `valkey.rdb` over
+`/data/dump.rdb` with the server stopped; in practice the counter is not
+worth the downtime.
+
+The PostgreSQL and MongoDB restores were tested against a real backup from
+this cluster.
 
 ### Infrastructure
 

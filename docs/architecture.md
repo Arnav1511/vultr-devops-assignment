@@ -81,6 +81,7 @@ flowchart TB
 | TLS | cert-manager + Let's Encrypt | Certificates for both hostnames via HTTP-01 through the Gateway |
 | Application | frontend, backend | Two Go services in `scratch` images |
 | Data | PostgreSQL, MongoDB, Valkey | One StatefulSet each, 10 GiB Vultr block volume, exporter sidecar |
+| Backup | CronJob → Vultr Object Storage | Nightly logical dump of all three databases, kept 14 days |
 | Secrets | Vault + Vault Secrets Operator | Passwords and registry credentials live in Vault and are synced into Kubernetes Secrets |
 | Observability | kube-prometheus-stack | Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics |
 | Delivery | GitHub Actions + Argo CD | Build, scan, SBOM; Argo CD applies Kustomize overlays with self-heal and prune |
@@ -271,6 +272,13 @@ Secrets or modify workloads. Third-party actions are pinned to commit SHAs.
 - **Single-instance databases and Vault.** No replication; a node failure
   means downtime for that store until its pod is rescheduled and its volume
   re-attached.
+- **Backups are nightly and in the same region.** Up to 24 hours of writes
+  can be lost, and the backup bucket is in Bangalore like the cluster, so it
+  protects against deleted volumes or a lost cluster but not a regional
+  outage. Vault's own data is not backed up.
+- **One object storage key pair.** Vultr issues one key per storage
+  subscription, so the backup job's key can also read the Terraform state
+  bucket.
 - **Vault unseals manually.** After a `vault-0` restart, run
   `bootstrap/secrets/unseal.sh`. Already-synced Secrets keep working meanwhile.
 - **One Vault key share**, held in a git-ignored local file.

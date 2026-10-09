@@ -28,3 +28,7 @@ for db in postgres mongodb valkey; do
   helm upgrade --install "$db" ./chart -n databases -f "${db}-values.yaml" \
     --wait --timeout 5m
 done
+
+# Nightly backups. The job's object storage keys are synced from Vault by
+# bootstrap/secrets/install.sh, so the first run succeeds only after that.
+kubectl apply -f backup-cronjob.yaml
