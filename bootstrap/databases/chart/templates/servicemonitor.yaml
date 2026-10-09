@@ -1,0 +1,16 @@
+# Tells the Prometheus Operator to scrape the exporter sidecar. Prometheus is
+# configured to pick up every ServiceMonitor in the cluster, so no extra label
+# is needed.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  endpoints:
+    - port: metrics
+      interval: 30s

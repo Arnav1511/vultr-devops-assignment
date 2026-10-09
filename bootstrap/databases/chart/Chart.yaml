@@ -1,0 +1,5 @@
+apiVersion: v2
+name: single-db
+description: One single-instance database as a StatefulSet with a persistent volume and a metrics exporter.
+type: application
+version: 0.1.0

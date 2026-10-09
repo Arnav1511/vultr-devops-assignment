@@ -1,0 +1,25 @@
+# Attaches to the shared Gateway in the "ingress" namespace (see
+# bootstrap/gateway/). The attachment is allowed because this namespace carries
+# the gateway-access label.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app
+spec:
+  parentRefs:
+    - name: public
+      namespace: ingress
+  rules:
+    # Path-based routing. The most specific prefix wins, so /api goes to the
+    # backend and everything else falls through to the frontend. Both are
+    # served from one origin, which is why the UI needs no CORS configuration.
+    - matches:
+        - path: {type: PathPrefix, value: /api}
+      backendRefs:
+        - name: backend
+          port: 80
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      backendRefs:
+        - name: frontend
+          port: 80

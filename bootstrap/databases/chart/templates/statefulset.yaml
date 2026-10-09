@@ -1,0 +1,106 @@
+{{- $name := .Release.Name -}}
+# StatefulSet, not Deployment: the pod keeps a stable name and is always
+# re-attached to the same PersistentVolumeClaim, so data survives restarts and
+# rescheduling.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.uid }}
+        runAsGroup: {{ .Values.gid }}
+        # Makes the mounted volume group-writable by the database user; a fresh
+        # block volume is otherwise owned by root.
+        fsGroup: {{ .Values.gid }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db
+          image: {{ .Values.image }}
+          {{- with .Values.args }}
+          args: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.env }}
+          env: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: db
+              containerPort: {{ .Values.port }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          # TCP checks: "is the port accepting connections". A deeper check
+          # would need a client binary and credentials inside the probe.
+          startupProbe:
+            tcpSocket: {port: db}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket: {port: db}
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket: {port: db}
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.dataPath }}
+            {{- range $i, $p := .Values.writablePaths }}
+            - name: scratch-{{ $i }}
+              mountPath: {{ $p }}
+            {{- end }}
+        - name: exporter
+          image: {{ .Values.exporter.image }}
+          {{- with .Values.exporter.args }}
+          args: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.exporter.env }}
+          env: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.exporter.port }}
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        {{- range $i, $p := .Values.writablePaths }}
+        - name: scratch-{{ $i }}
+          emptyDir: {}
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.storage.className }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.size }}

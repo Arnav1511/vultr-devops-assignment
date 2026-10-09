@@ -5,7 +5,7 @@ resources:
   - namespace.yaml
   - backend.yaml
   - frontend.yaml
-  - gateway.yaml
+  - httproute.yaml
 # Images are pinned to the git SHA that built them, never :latest, so a
 # rollback is a known artefact and CI changes exactly one line here.
 images:

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: databases
+  labels:
+    # In the mesh, so backend -> database traffic is mTLS-encrypted by ztunnel
+    # even though none of the databases is configured for TLS itself.
+    istio.io/dataplane-mode: ambient

@@ -1,0 +1,34 @@
+image: postgres:17.6-alpine
+port: 5432
+uid: 70   # the "postgres" user in the alpine image
+gid: 70
+dataPath: /var/lib/postgresql/data
+writablePaths:
+  - /tmp
+  - /var/run/postgresql   # unix socket and lock file
+env:
+  - name: POSTGRES_USER
+    value: app
+  - name: POSTGRES_DB
+    value: app
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: db-credentials, key: postgres-password}
+  # A fresh block volume contains lost+found, and initdb refuses a non-empty
+  # directory, so the cluster lives in a subdirectory of the mount.
+  - name: PGDATA
+    value: /var/lib/postgresql/data/pgdata
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {memory: 512Mi}
+exporter:
+  image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+  port: 9187
+  env:
+    - name: DATA_SOURCE_URI
+      value: localhost:5432/app?sslmode=disable   # same pod, loopback only
+    - name: DATA_SOURCE_USER
+      value: app
+    - name: DATA_SOURCE_PASS
+      valueFrom:
+        secretKeyRef: {name: db-credentials, key: postgres-password}

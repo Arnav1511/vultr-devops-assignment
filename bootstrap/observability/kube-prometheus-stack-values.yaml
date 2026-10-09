@@ -1,0 +1,89 @@
+# kube-prometheus-stack: Prometheus Operator, Prometheus, Alertmanager, Grafana,
+# node-exporter and kube-state-metrics in one release.
+
+# VKE runs the control plane outside the cluster, so etcd, the scheduler and
+# the controller-manager cannot be scraped; kube-proxy only serves metrics on
+# 127.0.0.1. Leaving these enabled produces permanently "down" targets and
+# false TargetDown alerts.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheusOperator:
+  # The operator's admission webhook is called by the Kubernetes API server,
+  # which is outside the mesh. Under STRICT mTLS that call would be rejected
+  # and every PrometheusRule apply would fail. Trade-off accepted: malformed
+  # rules are no longer rejected at apply time; the operator logs and skips
+  # them instead. Rejected alternative: a port-level PERMISSIVE exception.
+  admissionWebhooks:
+    enabled: false
+  tls:
+    enabled: false
+
+prometheus:
+  prometheusSpec:
+    # By default Prometheus only selects ServiceMonitors and rules labelled
+    # with this Helm release. Setting these to false makes it select every
+    # one in the cluster, so app and database monitors need no special label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    # Short retention: sized so the data fits the smallest Vultr NVMe volume.
+    retention: 7d
+    retentionSize: 8GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: vultr-block-storage
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+
+grafana:
+  # Admin credentials come from a Secret created by install.sh, so no password
+  # is ever written to this file or to git.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # Grafana is stateless here: dashboards are ConfigMaps in git, loaded by the
+  # chart's sidecar (any ConfigMap labelled grafana_dashboard=1). No PVC means
+  # the pod can be rescheduled freely and a dashboard edited by hand in the UI
+  # is deliberately not kept — git is the source of truth.
+  persistence:
+    enabled: false
+  sidecar:
+    dashboards:
+      searchNamespace: ALL
+
+  grafana.ini:
+    server:
+      root_url: http://grafana.139.84.159.60.sslip.io
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

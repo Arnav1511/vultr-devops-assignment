@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # Prometheus must be inside the mesh: with STRICT mTLS, a scrape from a
+    # non-mesh pod is plain text and ztunnel would reject it.
+    istio.io/dataplane-mode: ambient
+    # Lets the Grafana HTTPRoute attach to the public Gateway.
+    gateway-access: "true"

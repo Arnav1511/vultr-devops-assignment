@@ -1,0 +1,35 @@
+# The single public entry point for the cluster.
+#
+# Chain: GatewayClass "istio" (installed by istiod)
+#   -> Gateway (this file; Istio creates an Envoy Deployment and a LoadBalancer
+#      Service for it, and Vultr's cloud controller provisions the public LB)
+#   -> HTTPRoutes, which live next to the workloads they expose.
+#
+# Why its own namespace rather than the app's: one Gateway means one Vultr load
+# balancer shared by the app and Grafana. A Gateway per namespace would be one
+# billed load balancer and one public IP each.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: ingress
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          # Opt-in: only namespaces carrying this label may attach routes, so a
+          # workload in an arbitrary namespace cannot publish itself to the
+          # internet or hijack an existing path.
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"

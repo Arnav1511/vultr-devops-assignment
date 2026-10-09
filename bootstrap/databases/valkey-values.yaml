@@ -1,0 +1,29 @@
+image: valkey/valkey:8.1.4-alpine
+port: 6379
+uid: 999   # the "valkey" user in the alpine image
+gid: 1000
+dataPath: /data
+env:
+  - name: VALKEY_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: db-credentials, key: valkey-password}
+args:
+  - valkey-server
+  - --requirepass
+  - $(VALKEY_PASSWORD)
+  # Append-only file: every write is logged to the volume, so the cache
+  # contents survive a pod restart instead of starting empty.
+  - --appendonly
+  - "yes"
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+exporter:
+  image: oliver006/redis_exporter:v1.77.0
+  port: 9121
+  env:
+    - name: REDIS_ADDR
+      value: redis://localhost:6379   # Valkey speaks the Redis protocol
+    - name: REDIS_PASSWORD
+      valueFrom:
+        secretKeyRef: {name: db-credentials, key: valkey-password}

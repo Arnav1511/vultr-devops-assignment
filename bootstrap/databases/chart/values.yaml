@@ -1,0 +1,30 @@
+# Defaults shared by all three databases. Each database overrides these in its
+# own values file (postgres-values.yaml, mongodb-values.yaml, valkey-values.yaml).
+
+image: ""            # database image, pinned to a version tag
+port: 0              # port the database listens on
+args: []             # arguments passed to the image's entrypoint
+env: []              # container env, in Kubernetes format (supports valueFrom)
+
+# UID/GID the image's database user has. Set explicitly because runAsNonRoot
+# can only be verified against a numeric UID.
+uid: 999
+gid: 999
+
+dataPath: ""         # where the persistent volume is mounted
+storage:
+  size: 10Gi         # 10Gi is the smallest volume Vultr NVMe block storage sells
+  className: vultr-block-storage
+
+# Paths the database must write to besides its data directory. Each becomes an
+# emptyDir so the root filesystem can stay read-only.
+writablePaths:
+  - /tmp
+
+resources: {}
+
+exporter:
+  image: ""          # Prometheus exporter that translates DB stats to /metrics
+  port: 0
+  args: []
+  env: []
