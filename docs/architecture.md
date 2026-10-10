@@ -142,6 +142,17 @@ Points worth knowing:
   therefore run in un-enrolled namespaces, and the Prometheus operator's
   webhook is disabled.
 
+### Database accounts
+
+| Database | Admin account | Backend account |
+|---|---|---|
+| PostgreSQL | `postgres` — used by the exporter, the backup job and operators | `app` — not a superuser, cannot create databases or roles; owns only the `app` database |
+| MongoDB | `root` — exporter, backup job, operators | `app` — `readWrite` on the `app` database only |
+| Valkey | one shared password; no per-user accounts (it holds only a counter) | same |
+
+The backend pod is never given an admin password. The `app` accounts are
+created by `bootstrap/databases/create-app-users.sh`.
+
 ### What each database is for
 
 | Store | Used for | Why this store |

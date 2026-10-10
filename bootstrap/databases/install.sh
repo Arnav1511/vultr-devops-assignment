@@ -19,8 +19,10 @@ kubectl apply -f namespace.yaml
 # value is safe inside a connection URI without escaping.
 if ! kubectl -n databases get secret db-credentials >/dev/null 2>&1; then
   kubectl -n databases create secret generic db-credentials \
-    --from-literal=postgres-password="$(openssl rand -hex 24)" \
-    --from-literal=mongodb-password="$(openssl rand -hex 24)" \
+    --from-literal=postgres-admin-password="$(openssl rand -hex 24)" \
+    --from-literal=postgres-app-password="$(openssl rand -hex 24)" \
+    --from-literal=mongodb-admin-password="$(openssl rand -hex 24)" \
+    --from-literal=mongodb-app-password="$(openssl rand -hex 24)" \
     --from-literal=valkey-password="$(openssl rand -hex 24)"
 fi
 
@@ -28,6 +30,9 @@ for db in postgres mongodb valkey; do
   helm upgrade --install "$db" ./chart -n databases -f "${db}-values.yaml" \
     --wait --timeout 5m
 done
+
+# Non-admin "app" accounts for the backend (see the script for the reasoning).
+./create-app-users.sh
 
 # Restrict database access to the backend, Prometheus and the backup job.
 kubectl apply -f authorization-policy.yaml

@@ -267,7 +267,7 @@ for f in postgres.dump mongodb.archive.gz valkey.rdb; do s3 -o $f $P/$f; done
 
 # PostgreSQL: --clean drops existing objects before recreating them
 kubectl -n databases exec -i postgres-0 -c db -- \
-  pg_restore -U app -d app --clean --if-exists < postgres.dump
+  pg_restore -U postgres -d app --clean --if-exists < postgres.dump
 
 # MongoDB: --drop replaces each collection found in the archive
 kubectl -n databases exec -i mongodb-0 -c db -- sh -c \
@@ -295,7 +295,7 @@ revert the commit and run `terraform plan` / `apply` again.
 | Prometheus UI | `kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090` |
 | Argo CD UI | `kubectl -n argocd port-forward svc/argocd-server 8080:80`; password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \| base64 -d` |
 | Unseal Vault after a restart | `bootstrap/secrets/unseal.sh` |
-| Rotate a database password | Change it in the database, then `vault kv patch secret/app/databases <key>=<value>`; the operator syncs it and restarts the backend |
+| Rotate the backend's database password | `vault kv patch secret/app/databases postgres-app-password=<new>` (or `mongodb-app-password`), wait for the sync, then run `bootstrap/databases/create-app-users.sh`, which sets the new password in the database; the operator restarts the backend |
 | Confirm mTLS is enforced | `kubectl -n default run t --rm -it --restart=Never --image=curlimages/curl -- curl -m 5 http://backend.app-prod/api/status` must fail |
 | Test the admission webhook | `kubectl -n app-dev run bad --image=nginx:latest --dry-run=server` must be denied |
 

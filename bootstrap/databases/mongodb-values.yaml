@@ -4,11 +4,13 @@ uid: 999   # the "mongodb" user in the official image
 gid: 999
 dataPath: /data/db
 env:
+  # "root" is the admin. The backend's non-admin "app" user is created by
+  # create-app-users.sh.
   - name: MONGO_INITDB_ROOT_USERNAME
     value: root
   - name: MONGO_INITDB_ROOT_PASSWORD
     valueFrom:
-      secretKeyRef: {name: db-credentials, key: mongodb-password}
+      secretKeyRef: {name: db-credentials, key: mongodb-admin-password}
   # The entrypoint's init step runs mongosh, which writes to $HOME.
   - name: HOME
     value: /tmp
@@ -23,7 +25,7 @@ exporter:
   env:
     - name: MONGO_PASSWORD
       valueFrom:
-        secretKeyRef: {name: db-credentials, key: mongodb-password}
+        secretKeyRef: {name: db-credentials, key: mongodb-admin-password}
     # $(VAR) is expanded by Kubernetes from the entry above.
     - name: MONGODB_URI
       value: mongodb://root:$(MONGO_PASSWORD)@localhost:27017/admin

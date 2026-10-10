@@ -6,6 +6,9 @@
 # bucket is in the same region as the cluster (a second region would mean a
 # second storage subscription).
 #
+# The dumps run as each database's admin account: a backup must be able to
+# read everything, including objects the application account does not own.
+#
 # Shape: three init containers each dump one database, using that database's
 # own image so the client version always matches the server, into a shared
 # emptyDir. The main container then uploads the files. Init containers run in
@@ -49,11 +52,11 @@ spec:
               image: postgres:17.6-alpine
               # Custom format (-Fc): compressed, and restorable selectively
               # with pg_restore.
-              command: ["pg_dump", "-h", "postgres", "-U", "app", "-d", "app", "-Fc", "-f", "/backup/postgres.dump"]
+              command: ["pg_dump", "-h", "postgres", "-U", "postgres", "-d", "app", "-Fc", "-f", "/backup/postgres.dump"]
               env:
                 - name: PGPASSWORD
                   valueFrom:
-                    secretKeyRef: {name: db-credentials, key: postgres-password}
+                    secretKeyRef: {name: db-credentials, key: postgres-admin-password}
               securityContext: &hardened
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -71,7 +74,7 @@ spec:
               env:
                 - name: MONGO_PASSWORD
                   valueFrom:
-                    secretKeyRef: {name: db-credentials, key: mongodb-password}
+                    secretKeyRef: {name: db-credentials, key: mongodb-admin-password}
                 - {name: HOME, value: /tmp}
               securityContext: *hardened
               resources: *small

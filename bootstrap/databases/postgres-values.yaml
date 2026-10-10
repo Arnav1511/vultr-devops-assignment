@@ -7,13 +7,15 @@ writablePaths:
   - /tmp
   - /var/run/postgresql   # unix socket and lock file
 env:
-  - name: POSTGRES_USER
-    value: app
+  # No POSTGRES_USER: the image then creates its default admin, "postgres".
+  # Setting it to "app" would make the application's account the bootstrap
+  # superuser, which PostgreSQL never allows to be demoted. The backend's
+  # non-admin "app" role is created by create-app-users.sh instead.
   - name: POSTGRES_DB
     value: app
   - name: POSTGRES_PASSWORD
     valueFrom:
-      secretKeyRef: {name: db-credentials, key: postgres-password}
+      secretKeyRef: {name: db-credentials, key: postgres-admin-password}
   # A fresh block volume contains lost+found, and initdb refuses a non-empty
   # directory, so the cluster lives in a subdirectory of the mount.
   - name: PGDATA
@@ -27,8 +29,9 @@ exporter:
   env:
     - name: DATA_SOURCE_URI
       value: localhost:5432/app?sslmode=disable   # same pod, loopback only
+    # The exporter reads server-wide statistics, which needs the admin.
     - name: DATA_SOURCE_USER
-      value: app
+      value: postgres
     - name: DATA_SOURCE_PASS
       valueFrom:
-        secretKeyRef: {name: db-credentials, key: postgres-password}
+        secretKeyRef: {name: db-credentials, key: postgres-admin-password}
