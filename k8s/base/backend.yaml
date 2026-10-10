@@ -67,12 +67,14 @@ spec:
             # Passwords come from the Vault-synced Secret; the URLs are built
             # from them with Kubernetes $(VAR) expansion, so the full
             # connection strings never exist in git or in a ConfigMap.
+            # The backend logs in as the non-admin "app" account in both
+            # databases; the admin passwords are never given to this pod.
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: {name: db-credentials, key: postgres-password}
+                secretKeyRef: {name: db-credentials, key: postgres-app-password}
             - name: MONGODB_PASSWORD
               valueFrom:
-                secretKeyRef: {name: db-credentials, key: mongodb-password}
+                secretKeyRef: {name: db-credentials, key: mongodb-app-password}
             - name: VALKEY_PASSWORD
               valueFrom:
                 secretKeyRef: {name: db-credentials, key: valkey-password}
@@ -81,7 +83,8 @@ spec:
             - name: DATABASE_URL
               value: postgres://app:$(POSTGRES_PASSWORD)@postgres.databases.svc.cluster.local:5432/app?sslmode=disable
             - name: MONGODB_URI
-              value: mongodb://root:$(MONGODB_PASSWORD)@mongodb.databases.svc.cluster.local:27017/?authSource=admin
+              # authSource=app: the "app" user is defined in the "app" database.
+              value: mongodb://app:$(MONGODB_PASSWORD)@mongodb.databases.svc.cluster.local:27017/app?authSource=app
             - name: VALKEY_ADDR
               value: valkey.databases.svc.cluster.local:6379
           securityContext:

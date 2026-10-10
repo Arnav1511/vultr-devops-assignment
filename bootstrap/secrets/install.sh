@@ -44,7 +44,7 @@ if ! v kv get secret/app/databases >/dev/null 2>&1; then
     kubectl -n databases get secret db-credentials -o json \
       | python3 -c "import sys,json,base64;print(json.dumps({k:base64.b64decode(x).decode() for k,x in json.load(sys.stdin)['data'].items()}))"
   else
-    python3 -c "import json,secrets;print(json.dumps({k+'-password':secrets.token_hex(24) for k in ('postgres','mongodb','valkey')}))"
+    python3 -c "import json,secrets;print(json.dumps({k+'-password':secrets.token_hex(24) for k in ('postgres-admin','postgres-app','mongodb-admin','mongodb-app','valkey')}))"
   fi | v kv put secret/app/databases - >/dev/null
 fi
 
